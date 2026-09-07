@@ -160,21 +160,21 @@ def test_client_post_request():
         assert call_kwargs['headers']['X-Api-Key'] == 'test_key'
 
 
-def test_client_api_error():
-    """测试 API 错误处理"""
+def test_client_non_json_response():
+    """测试非 JSON 响应"""
     client = BooheeClient(api_key='test_key', auth_mode=AuthMode.API_KEY)
 
     with patch('requests.get') as mock_get:
         mock_response = Mock()
-        mock_response.status_code = 400
-        mock_response.json.return_value = {'code': 400, 'message': 'invalid params'}
+        mock_response.status_code = 200
+        mock_response.json.side_effect = ValueError("Not JSON")
+        mock_response.text = "Internal Server Error"
         mock_get.return_value = mock_response
 
-        with pytest.raises(APIError) as exc_info:
-            client.get('/open-apis/v1/food/search', {})
-
-        assert exc_info.value.code == 400
-        assert exc_info.value.message == 'invalid params'
+        # 应该返回包装的错误响应
+        raw = client.get('/test', {})
+        assert raw['code'] == -1
+        assert 'Internal Server Error' in raw['message']
 
 
 def test_client_network_error():
@@ -315,36 +315,36 @@ def test_token_401_retry():
         assert mock_get.call_count == 2
 
 
-def test_client_server_error():
-    """测试 5xx 服务端错误"""
+def test_client_server_error_via_base_resp():
+    """测试服务端错误通过 BaseResp 处理"""
+    from boohee_sdk.response import BaseResp
+
     client = BooheeClient(api_key='test_key', auth_mode=AuthMode.API_KEY)
 
     with patch('requests.get') as mock_get:
         mock_response = Mock()
-        mock_response.status_code = 500
-        mock_response.json.return_value = {'code': 500, 'message': 'internal error'}
+        mock_response.status_code = 200  # HTTP 200
+        mock_response.json.return_value = {
+            'code': 500,
+            'message': 'internal error',
+            'now': 1722851989,
+            'data': None
+        }
         mock_get.return_value = mock_response
 
+        # _request 返回原始字典
+        raw = client.get('/test', {})
+
+        # 包装为 BaseResp
+        resp = BaseResp(raw)
+        assert resp.code == 500
+        assert resp.is_success() is False
+
+        # raise_for_error 应该抛出 APIError
         with pytest.raises(APIError) as exc_info:
-            client.get('/test', {})
+            resp.raise_for_error()
 
         assert exc_info.value.code == 500
-
-
-def test_client_401_api_key_mode():
-    """测试 401 在 API_KEY 模式下抛出 APIError"""
-    client = BooheeClient(api_key='test_key', auth_mode=AuthMode.API_KEY)
-
-    with patch('requests.get') as mock_get:
-        mock_response = Mock()
-        mock_response.status_code = 401
-        mock_response.json.return_value = {'code': 401, 'message': 'invalid api key'}
-        mock_get.return_value = mock_response
-
-        with pytest.raises(APIError) as exc_info:
-            client.get('/test', {})
-
-        assert exc_info.value.code == 401
 
 
 def test_token_memory_cache_hit():

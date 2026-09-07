@@ -140,14 +140,7 @@ class BooheeClient:
         """
         发送 HTTP 请求
 
-        Args:
-            method: HTTP 方法(GET/POST)
-            path: API 路径
-            params: 查询参数
-            json_data: JSON 请求体
-
-        Returns:
-            API 响应
+        注意: 此方法不检查业务错误(code != 0),由 BaseResp.raise_for_error() 处理
         """
         url = f"{self.base_url}{path}"
         headers = self._get_headers()
@@ -155,21 +148,19 @@ class BooheeClient:
         try:
             response = self._send_request(method, url, params, json_data, headers)
 
-            # 检查响应状态:401 时自动刷新 token 并重试一次
+            # 检查响应状态:401 时自动刷新 token 并重试一次(仅 ACCESS_TOKEN 模式)
             if response.status_code == 401 and self.auth_mode == AuthMode.ACCESS_TOKEN:
                 self._force_refresh_access_token()
                 headers = self._get_headers()
                 response = self._send_request(method, url, params, json_data, headers)
 
-            if response.status_code >= 400:
-                try:
-                    error_data = response.json()
-                    raise APIError(error_data.get('code', response.status_code),
-                                 error_data.get('message', response.text))
-                except (ValueError, KeyError):
-                    raise APIError(response.status_code, response.text)
-
-            return response.json()
+            # 直接返回响应体,不检查 HTTP 状态码
+            # 业务错误由 BaseResp.raise_for_error() 根据 code 字段判断
+            try:
+                return response.json()
+            except ValueError:
+                # 如果响应不是 JSON,返回原始文本
+                return {'code': -1, 'message': response.text, 'data': None}
 
         except requests.exceptions.RequestException as e:
             raise NetworkError(f"Request failed: {str(e)}")
