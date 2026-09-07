@@ -110,13 +110,19 @@ def test_client_execute_get():
     with patch('requests.get') as mock_get:
         mock_response = Mock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {'foods': []}
+        mock_response.json.return_value = {
+            'code': 0,
+            'message': '成功',
+            'now': 1722851989,
+            'data': {'foods': []}
+        }
         mock_get.return_value = mock_response
 
         req = FoodSearchReq('apple', page=3)
-        result = client.execute(req)
+        resp = client.execute(req)
 
-        assert result == {'foods': []}
+        assert resp.is_success()
+        assert resp.data == {'foods': []}
         mock_get.assert_called_once()
 
         call_kwargs = mock_get.call_args[1]
@@ -133,13 +139,19 @@ def test_client_execute_post():
     with patch('requests.post') as mock_post:
         mock_response = Mock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {'success': True}
+        mock_response.json.return_value = {
+            'code': 0,
+            'message': '成功',
+            'now': 1722851989,
+            'data': {'success': True}
+        }
         mock_post.return_value = mock_response
 
         req = WeightRecordReq('user123', 70.5)
-        result = client.execute(req)
+        resp = client.execute(req)
 
-        assert result == {'success': True}
+        assert resp.is_success()
+        assert resp.data == {'success': True}
         mock_post.assert_called_once()
 
         call_kwargs = mock_post.call_args[1]
@@ -154,9 +166,15 @@ def test_client_execute_with_defaults():
     with patch('requests.get') as mock_get:
         mock_response = Mock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {'pong': True}
+        mock_response.json.return_value = {
+            'code': 0,
+            'message': '成功',
+            'now': 1722851989,
+            'data': {'pong': True}
+        }
         mock_get.return_value = mock_response
 
-        result = client.execute(MinimalGetReq())
-        assert result == {'pong': True}
+        resp = client.execute(MinimalGetReq())
+        assert resp.is_success()
+        assert resp.data == {'pong': True}
         mock_get.assert_called_once()

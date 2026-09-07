@@ -8,6 +8,7 @@ from .auth import AuthMode, rsa_sign, build_signature_string
 from .cache import TokenCache
 from .exceptions import AuthenticationError, APIError, NetworkError
 from .request import BaseReq
+from .response import BaseResp
 
 
 class BooheeClient:
@@ -107,7 +108,7 @@ class BooheeClient:
         """
         return self._request('POST', path, json_data=data)
 
-    def execute(self, req: BaseReq) -> Dict[str, Any]:
+    def execute(self, req: BaseReq) -> BaseResp:
         """
         执行 BaseReq 请求
 
@@ -119,14 +120,15 @@ class BooheeClient:
             req: BaseReq 实例
 
         Returns:
-            API 响应(已解析为 dict)
+            BaseResp 响应对象
         """
         method = req.get_method()
         path = req.get_url()
         params = req.get_query_params()
         data = req.get_body()
 
-        return self._request(method, path, params=params, json_data=data)
+        raw_response = self._request(method, path, params=params, json_data=data)
+        return BaseResp(raw_response)
 
     def _request(
         self,

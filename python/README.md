@@ -40,8 +40,20 @@ client = BooheeClient(
 
 # 3. 执行请求
 req = FoodSearchReq('apple', page=1)
-result = client.execute(req)
-print(result)
+resp = client.execute(req)
+
+# 检查是否成功
+if resp.is_success():
+    # 访问 data 字段
+    foods = resp.data.get('foods', [])
+    for food in foods:
+        print(food['name'])
+else:
+    print(f"Error: {resp.message}")
+
+# 或者使用 raise_for_error(失败会抛出 APIError)
+resp.raise_for_error()
+foods = resp.data.get('foods', [])
 ```
 
 ### Access Token 模式
@@ -56,8 +68,9 @@ client = BooheeClient(
 )
 
 # 复用上面的 FoodSearchReq
-result = client.execute(FoodSearchReq('apple'))
-print(result)
+resp = client.execute(FoodSearchReq('apple'))
+if resp.is_success():
+    print(resp.data)
 ```
 
 ### POST 请求示例
@@ -76,7 +89,8 @@ class WeightRecordReq(BaseReq):
     def get_body(self):
         return {'weight': self.weight}
 
-client.execute(WeightRecordReq(70.5))
+resp = client.execute(WeightRecordReq(70.5))
+resp.raise_for_error()  # 失败抛出 APIError
 ```
 
 ### `BaseReq` 接口
@@ -129,11 +143,27 @@ client = BooheeClient(
 
 ## 错误处理
 
+SDK 提供两种错误处理方式:
+
+### 1. 使用 `BaseResp.raise_for_error()`
+
+```python
+resp = client.execute(FoodSearchReq('apple'))
+try:
+    resp.raise_for_error()  # 如果 code != 0,抛出 APIError
+    # 处理 resp.data ...
+except APIError as e:
+    print(f"API 错误 {e.code}: {e.message}")
+```
+
+### 2. 捕获网络/认证异常
+
 ```python
 from boohee_sdk.exceptions import AuthenticationError, APIError, NetworkError
 
 try:
-    result = client.execute(FoodSearchReq('apple'))
+    resp = client.execute(FoodSearchReq('apple'))
+    resp.raise_for_error()
 except AuthenticationError as e:
     print(f"认证失败: {e}")
 except APIError as e:
