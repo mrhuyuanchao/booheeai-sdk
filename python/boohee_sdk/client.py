@@ -79,3 +79,112 @@ class BooheeClient:
 
         else:
             raise ValueError(f"Invalid auth_mode: {auth_mode}")
+
+    def get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        发送 GET 请求
+
+        Args:
+            path: API 路径
+            params: 查询参数
+
+        Returns:
+            API 响应(已解析为 dict)
+        """
+        return self._request('GET', path, params=params)
+
+    def post(self, path: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        发送 POST 请求
+
+        Args:
+            path: API 路径
+            data: 请求体数据
+
+        Returns:
+            API 响应(已解析为 dict)
+        """
+        return self._request('POST', path, json_data=data)
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        params: Optional[Dict[str, Any]] = None,
+        json_data: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        发送 HTTP 请求
+
+        Args:
+            method: HTTP 方法(GET/POST)
+            path: API 路径
+            params: 查询参数
+            json_data: JSON 请求体
+
+        Returns:
+            API 响应
+        """
+        url = f"{self.base_url}{path}"
+        headers = self._get_headers()
+
+        try:
+            if method == 'GET':
+                response = requests.get(
+                    url,
+                    params=params,
+                    headers=headers,
+                    timeout=self.timeout
+                )
+            elif method == 'POST':
+                response = requests.post(
+                    url,
+                    json=json_data,
+                    headers=headers,
+                    timeout=self.timeout
+                )
+            else:
+                raise ValueError(f"Unsupported HTTP method: {method}")
+
+            # 检查响应状态
+            if response.status_code == 401:
+                # Token 过期,尝试刷新后重试(仅 ACCESS_TOKEN 模式)
+                if self.auth_mode == AuthMode.ACCESS_TOKEN:
+                    # _force_refresh_token 将在 Task 10 实现
+                    # 暂时先跳过,后续补充
+                    pass
+
+            if response.status_code >= 400:
+                try:
+                    error_data = response.json()
+                    raise APIError(error_data.get('code', response.status_code),
+                                 error_data.get('message', response.text))
+                except (ValueError, KeyError):
+                    raise APIError(response.status_code, response.text)
+
+            return response.json()
+
+        except requests.exceptions.RequestException as e:
+            raise NetworkError(f"Request failed: {str(e)}")
+
+    def _get_headers(self) -> Dict[str, str]:
+        """
+        获取请求头
+
+        Returns:
+            包含认证信息的请求头
+        """
+        headers: Dict[str, str] = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        }
+
+        if self.auth_mode == AuthMode.ACCESS_TOKEN:
+            # _get_access_token 将在 Task 10 实现
+            # 暂时使用占位,后续补充
+            token = self._access_token or 'placeholder_token'
+            headers['AccessToken'] = token
+        elif self.auth_mode == AuthMode.API_KEY:
+            headers['X-Api-Key'] = self.api_key
+
+        return headers

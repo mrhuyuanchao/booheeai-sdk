@@ -1,5 +1,7 @@
 import pytest
+from unittest.mock import Mock, patch
 from boohee_sdk import BooheeClient, AuthMode
+from boohee_sdk.exceptions import APIError, NetworkError
 
 
 def test_client_init_access_token_mode():
@@ -114,3 +116,92 @@ def test_client_empty_string_params():
     """测试空字符串参数被拒绝"""
     with pytest.raises(ValueError):
         BooheeClient(app_id='', app_key='key', private_key='pem')
+
+
+def test_client_get_request():
+    """测试 GET 请求"""
+    client = BooheeClient(api_key='test_key', auth_mode=AuthMode.API_KEY)
+
+    with patch('requests.get') as mock_get:
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {'data': 'test'}
+        mock_get.return_value = mock_response
+
+        result = client.get('/open-apis/v1/food/search', {'keyword': 'apple'})
+
+        assert result == {'data': 'test'}
+        mock_get.assert_called_once()
+
+        # 验证 Header 包含 X-Api-Key
+        call_kwargs = mock_get.call_args[1]
+        assert 'X-Api-Key' in call_kwargs['headers']
+        assert call_kwargs['headers']['X-Api-Key'] == 'test_key'
+
+
+def test_client_post_request():
+    """测试 POST 请求"""
+    client = BooheeClient(api_key='test_key', auth_mode=AuthMode.API_KEY)
+
+    with patch('requests.post') as mock_post:
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {'success': True}
+        mock_post.return_value = mock_response
+
+        result = client.post('/open-apis/v1/weight/record', {'weight': 70.5})
+
+        assert result == {'success': True}
+        mock_post.assert_called_once()
+
+
+def test_client_api_error():
+    """测试 API 错误处理"""
+    client = BooheeClient(api_key='test_key', auth_mode=AuthMode.API_KEY)
+
+    with patch('requests.get') as mock_get:
+        mock_response = Mock()
+        mock_response.status_code = 400
+        mock_response.json.return_value = {'code': 400, 'message': 'invalid params'}
+        mock_get.return_value = mock_response
+
+        with pytest.raises(APIError) as exc_info:
+            client.get('/open-apis/v1/food/search', {})
+
+        assert exc_info.value.code == 400
+        assert exc_info.value.message == 'invalid params'
+
+
+def test_client_network_error():
+    """测试网络错误处理"""
+    import requests as req
+    client = BooheeClient(api_key='test_key', auth_mode=AuthMode.API_KEY)
+
+    with patch('requests.get') as mock_get:
+        mock_get.side_effect = req.exceptions.ConnectionError("Connection refused")
+
+        with pytest.raises(NetworkError):
+            client.get('/open-apis/v1/food/search', {})
+
+
+def test_client_access_token_header():
+    """测试 ACCESS_TOKEN 模式的 Header"""
+    client = BooheeClient(
+        app_id='test',
+        app_key='key',
+        private_key='pem'
+    )
+    # 暂时设置一个占位 token
+    client._access_token = 'test_token'
+
+    headers = client._get_headers()
+    assert headers['AccessToken'] == 'test_token'
+    assert 'X-Api-Key' not in headers
+
+
+def test_client_invalid_method():
+    """测试不支持的 HTTP 方法"""
+    client = BooheeClient(api_key='test_key', auth_mode=AuthMode.API_KEY)
+
+    with pytest.raises(ValueError, match="Unsupported HTTP method"):
+        client._request('DELETE', '/test')
