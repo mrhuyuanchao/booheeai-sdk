@@ -345,3 +345,47 @@ def test_client_401_api_key_mode():
             client.get('/test', {})
 
         assert exc_info.value.code == 401
+
+
+def test_token_memory_cache_hit():
+    """测试内存缓存命中"""
+    client = BooheeClient(
+        app_id='test',
+        app_key='key',
+        private_key='pem'
+    )
+    # 设置一个未过期的 token
+    client._access_token = 'cached_token'
+    client._token_expires_at = time.time() + 3600
+
+    # 应该直接返回,不调用 API
+    with patch('requests.post') as mock_post:
+        token = client._get_access_token()
+        assert token == 'cached_token'
+        assert not mock_post.called
+
+
+def test_token_refresh_buffer():
+    """测试 TOKEN_REFRESH_BUFFER 提前刷新"""
+    client = BooheeClient(
+        app_id='test',
+        app_key='key',
+        private_key='pem'
+    )
+    # 设置一个即将过期的 token(在 buffer 内)
+    client._access_token = 'expiring_token'
+    client._token_expires_at = time.time() + 200  # 小于 300 秒 buffer
+
+    with patch('requests.post') as mock_post:
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            'access_token': 'new_token',
+            'expires_in': 86400
+        }
+        mock_post.return_value = mock_response
+
+        with patch('boohee_sdk.client.rsa_sign', return_value='sig'):
+            token = client._get_access_token()
+            assert token == 'new_token'
+            assert mock_post.called

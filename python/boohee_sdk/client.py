@@ -129,41 +129,13 @@ class BooheeClient:
         headers = self._get_headers()
 
         try:
-            if method == 'GET':
-                response = requests.get(
-                    url,
-                    params=params,
-                    headers=headers,
-                    timeout=self.timeout
-                )
-            elif method == 'POST':
-                response = requests.post(
-                    url,
-                    json=json_data,
-                    headers=headers,
-                    timeout=self.timeout
-                )
-            else:
-                raise ValueError(f"Unsupported HTTP method: {method}")
+            response = self._send_request(method, url, params, json_data, headers)
 
             # 检查响应状态:401 时自动刷新 token 并重试一次
             if response.status_code == 401 and self.auth_mode == AuthMode.ACCESS_TOKEN:
                 self._force_refresh_access_token()
                 headers = self._get_headers()
-                if method == 'GET':
-                    response = requests.get(
-                        url,
-                        params=params,
-                        headers=headers,
-                        timeout=self.timeout
-                    )
-                else:
-                    response = requests.post(
-                        url,
-                        json=json_data,
-                        headers=headers,
-                        timeout=self.timeout
-                    )
+                response = self._send_request(method, url, params, json_data, headers)
 
             if response.status_code >= 400:
                 try:
@@ -177,6 +149,15 @@ class BooheeClient:
 
         except requests.exceptions.RequestException as e:
             raise NetworkError(f"Request failed: {str(e)}")
+
+    def _send_request(self, method, url, params, json_data, headers):
+        """发送 HTTP 请求的辅助方法"""
+        if method == 'GET':
+            return requests.get(url, params=params, headers=headers, timeout=self.timeout)
+        elif method == 'POST':
+            return requests.post(url, json=json_data, headers=headers, timeout=self.timeout)
+        else:
+            raise ValueError(f"Unsupported HTTP method: {method}")
 
     def _get_headers(self) -> Dict[str, str]:
         """
@@ -214,8 +195,9 @@ class BooheeClient:
             cached_token = self.cache.get(self.app_id)
             if cached_token:
                 self._access_token = cached_token
-                # 假设缓存的 token 还有 1 小时有效期
-                self._token_expires_at = time.time() + 3600
+                # 保守假设:cache 返回的 token 可能在 10 分钟内过期
+                # 下次调用时会触发 API 刷新
+                self._token_expires_at = time.time() + 600
                 return self._access_token
 
         # 刷新 token
