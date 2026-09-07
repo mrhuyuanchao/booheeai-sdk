@@ -157,3 +157,55 @@ def test_rsa_sign_different_messages():
     sig1 = rsa_sign("message1", private_pem)
     sig2 = rsa_sign("message2", private_pem)
     assert sig1 != sig2
+
+
+def test_build_signature_string():
+    """测试签名串构造"""
+    from boohee_sdk.auth import build_signature_string
+
+    app_id = "my_app_123"
+    app_key = "my_secret_key_456"
+    timestamp = 1234567890
+
+    result = build_signature_string(app_id, app_key, timestamp)
+    expected = "my_secret_key_456app_idmy_app_123timestamp1234567890my_secret_key_456"
+
+    assert result == expected
+
+
+def test_build_signature_string_with_real_data():
+    """测试真实数据格式"""
+    from boohee_sdk.auth import build_signature_string
+
+    app_id = "test_app"
+    app_key = "test_key"
+    timestamp = 1694073600
+
+    result = build_signature_string(app_id, app_key, timestamp)
+    assert result.startswith("test_key")
+    assert result.endswith("test_key")
+    assert "app_idtest_app" in result
+    assert "timestamp1694073600" in result
+
+
+def test_build_signature_string_combined_with_sign():
+    """测试签名串构造 + 签名组合"""
+    import base64
+    from Crypto.PublicKey import RSA
+    from boohee_sdk.auth import build_signature_string, rsa_sign
+
+    app_id = "test_app"
+    app_key = "test_key"
+    timestamp = 1694073600
+
+    # 构造签名串
+    sig_str = build_signature_string(app_id, app_key, timestamp)
+
+    # 生成密钥并签名
+    key = RSA.generate(2048)
+    private_pem = key.export_key().decode()
+    signature = rsa_sign(sig_str, private_pem)
+
+    # 验证签名有效
+    assert isinstance(signature, str)
+    assert len(base64.b64decode(signature)) == 256

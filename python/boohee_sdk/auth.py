@@ -33,4 +33,21 @@ def rsa_sign(plaintext: str, private_key_pem: str) -> str:
     return base64.b64encode(signature).decode("utf-8")
 
 
-__all__ = ['AuthMode', 'rsa_sign']
+def build_signature_string(app_id: str, app_key: str, timestamp: int) -> str:
+    """
+    构造签名串
+
+    格式: appKey + "app_id" + appId + "timestamp" + timestamp + appKey
+
+    Args:
+        app_id: 应用 ID
+        app_key: 应用密钥
+        timestamp: Unix 秒级时间戳
+
+    Returns:
+        签名字符串
+    """
+    return f"{app_key}app_id{app_id}timestamp{timestamp}{app_key}"
+
+
+__all__ = ['AuthMode', 'rsa_sign', 'build_signature_string']
