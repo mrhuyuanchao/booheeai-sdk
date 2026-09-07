@@ -74,3 +74,86 @@ def test_rsa_sign_with_generated_key():
     assert len(decoded) > 0
     # RSA 2048 签名长度应为 256 字节
     assert len(decoded) == 256
+
+
+def test_rsa_sign_verification_roundtrip():
+    """测试签名可被正确验证"""
+    from Crypto.PublicKey import RSA
+    from Crypto.Signature import pss
+    from Crypto.Hash import SHA256
+    import base64
+    from boohee_sdk.auth import rsa_sign
+
+    key = RSA.generate(2048)
+    private_pem = key.export_key().decode()
+    public_pem = key.publickey().export_key().decode()
+
+    message = "test_message"
+    signature = rsa_sign(message, private_pem)
+
+    # 验证签名
+    pub_key = RSA.import_key(public_pem)
+    h = SHA256.new(message.encode("utf-8"))
+    # 不应抛出异常
+    pss.new(pub_key).verify(h, base64.b64decode(signature))
+
+
+def test_rsa_sign_invalid_pem():
+    """测试无效私钥抛出异常"""
+    import pytest
+    from boohee_sdk.auth import rsa_sign
+
+    with pytest.raises((ValueError, TypeError)):
+        rsa_sign("test", "not-a-valid-pem")
+
+
+def test_rsa_sign_public_key_not_private():
+    """测试传入公钥应抛出异常"""
+    import pytest
+    from Crypto.PublicKey import RSA
+    from boohee_sdk.auth import rsa_sign
+
+    key = RSA.generate(2048)
+    public_pem = key.publickey().export_key().decode()
+
+    with pytest.raises((TypeError, ValueError)):
+        rsa_sign("test", public_pem)
+
+
+def test_rsa_sign_empty_string():
+    """测试空字符串签名"""
+    import base64
+    from Crypto.PublicKey import RSA
+    from boohee_sdk.auth import rsa_sign
+
+    key = RSA.generate(2048)
+    private_pem = key.export_key().decode()
+
+    signature = rsa_sign("", private_pem)
+    assert isinstance(signature, str)
+    assert len(base64.b64decode(signature)) == 256
+
+
+def test_rsa_sign_unicode_message():
+    """测试 Unicode 消息签名"""
+    from Crypto.PublicKey import RSA
+    from boohee_sdk.auth import rsa_sign
+
+    key = RSA.generate(2048)
+    private_pem = key.export_key().decode()
+
+    signature = rsa_sign("测试中文消息 🎉", private_pem)
+    assert isinstance(signature, str)
+
+
+def test_rsa_sign_different_messages():
+    """测试相同密钥对不同消息产生不同签名"""
+    from Crypto.PublicKey import RSA
+    from boohee_sdk.auth import rsa_sign
+
+    key = RSA.generate(2048)
+    private_pem = key.export_key().decode()
+
+    sig1 = rsa_sign("message1", private_pem)
+    sig2 = rsa_sign("message2", private_pem)
+    assert sig1 != sig2
