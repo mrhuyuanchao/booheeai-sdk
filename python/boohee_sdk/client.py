@@ -1,12 +1,12 @@
 """核心客户端"""
-import time  # TODO: used by Task 10 (token management)
+import time
 import threading
 from typing import Optional, Dict, Any, Union
-import requests  # TODO: used by Task 9 (HTTP methods)
+import requests
 
 from .auth import AuthMode, rsa_sign, build_signature_string
 from .cache import TokenCache
-from .exceptions import AuthenticationError, APIError, NetworkError  # TODO: used by Task 9-10
+from .exceptions import AuthenticationError, APIError, NetworkError
 
 
 class BooheeClient:
@@ -14,7 +14,7 @@ class BooheeClient:
 
     DEFAULT_BASE_URL = "https://api.boohee.com"
     DEFAULT_TIMEOUT = 30
-    TOKEN_REFRESH_BUFFER = 300  # TODO: used by Task 10 (token refresh)
+    TOKEN_REFRESH_BUFFER = 300
 
     def __init__(
         self,
@@ -147,12 +147,10 @@ class BooheeClient:
                 raise ValueError(f"Unsupported HTTP method: {method}")
 
             # 检查响应状态
-            if response.status_code == 401:
-                # Token 过期,尝试刷新后重试(仅 ACCESS_TOKEN 模式)
-                if self.auth_mode == AuthMode.ACCESS_TOKEN:
-                    # _force_refresh_token 将在 Task 10 实现
-                    # 暂时先跳过,后续补充
-                    pass
+            if response.status_code == 401 and self.auth_mode == AuthMode.ACCESS_TOKEN:
+                # Task 10: 在此处调用 _refresh_access_token() 并重试请求
+                # 当前 401 继续走下方 >= 400 分支,统一抛出 APIError
+                pass
 
             if response.status_code >= 400:
                 try:

@@ -154,6 +154,10 @@ def test_client_post_request():
         assert result == {'success': True}
         mock_post.assert_called_once()
 
+        call_kwargs = mock_post.call_args[1]
+        assert call_kwargs['json'] == {'weight': 70.5}
+        assert call_kwargs['headers']['X-Api-Key'] == 'test_key'
+
 
 def test_client_api_error():
     """测试 API 错误处理"""
@@ -205,3 +209,35 @@ def test_client_invalid_method():
 
     with pytest.raises(ValueError, match="Unsupported HTTP method"):
         client._request('DELETE', '/test')
+
+
+def test_client_server_error():
+    """测试 5xx 服务端错误"""
+    client = BooheeClient(api_key='test_key', auth_mode=AuthMode.API_KEY)
+
+    with patch('requests.get') as mock_get:
+        mock_response = Mock()
+        mock_response.status_code = 500
+        mock_response.json.return_value = {'code': 500, 'message': 'internal error'}
+        mock_get.return_value = mock_response
+
+        with pytest.raises(APIError) as exc_info:
+            client.get('/test', {})
+
+        assert exc_info.value.code == 500
+
+
+def test_client_401_api_key_mode():
+    """测试 401 在 API_KEY 模式下抛出 APIError"""
+    client = BooheeClient(api_key='test_key', auth_mode=AuthMode.API_KEY)
+
+    with patch('requests.get') as mock_get:
+        mock_response = Mock()
+        mock_response.status_code = 401
+        mock_response.json.return_value = {'code': 401, 'message': 'invalid api key'}
+        mock_get.return_value = mock_response
+
+        with pytest.raises(APIError) as exc_info:
+            client.get('/test', {})
+
+        assert exc_info.value.code == 401
