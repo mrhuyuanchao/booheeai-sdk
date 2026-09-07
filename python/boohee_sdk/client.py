@@ -1,12 +1,12 @@
 """核心客户端"""
-import time
+import time  # TODO: used by Task 10 (token management)
 import threading
-from typing import Optional, Dict, Any
-import requests
+from typing import Optional, Dict, Any, Union
+import requests  # TODO: used by Task 9 (HTTP methods)
 
 from .auth import AuthMode, rsa_sign, build_signature_string
 from .cache import TokenCache
-from .exceptions import AuthenticationError, APIError, NetworkError
+from .exceptions import AuthenticationError, APIError, NetworkError  # TODO: used by Task 9-10
 
 
 class BooheeClient:
@@ -14,7 +14,7 @@ class BooheeClient:
 
     DEFAULT_BASE_URL = "https://api.boohee.com"
     DEFAULT_TIMEOUT = 30
-    TOKEN_REFRESH_BUFFER = 300  # 提前 5 分钟刷新
+    TOKEN_REFRESH_BUFFER = 300  # TODO: used by Task 10 (token refresh)
 
     def __init__(
         self,
@@ -28,7 +28,7 @@ class BooheeClient:
         auth_mode: AuthMode = AuthMode.ACCESS_TOKEN,
         base_url: str = DEFAULT_BASE_URL,
         cache: Optional[TokenCache] = None,
-        timeout: int = DEFAULT_TIMEOUT
+        timeout: Union[int, float] = DEFAULT_TIMEOUT
     ):
         """
         初始化客户端
@@ -46,7 +46,7 @@ class BooheeClient:
         self.auth_mode = auth_mode
         self.base_url = base_url.rstrip('/')
         self.cache = cache
-        self.timeout = timeout
+        self.timeout: Union[int, float] = timeout
 
         # Access Token 模式
         if auth_mode == AuthMode.ACCESS_TOKEN:
