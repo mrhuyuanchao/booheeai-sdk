@@ -7,6 +7,7 @@ import requests
 from .auth import AuthMode, rsa_sign, build_signature_string
 from .cache import TokenCache
 from .exceptions import AuthenticationError, APIError, NetworkError
+from .request import BaseReq
 
 
 class BooheeClient:
@@ -105,6 +106,27 @@ class BooheeClient:
             API 响应(已解析为 dict)
         """
         return self._request('POST', path, json_data=data)
+
+    def execute(self, req: BaseReq) -> Dict[str, Any]:
+        """
+        执行 BaseReq 请求
+
+        开发者实现 `BaseReq` 子类后,通过本方法统一发起调用。
+        内部会根据 `req.get_method()` 选择 GET / POST,
+        并分别传入 query params 与 JSON body。
+
+        Args:
+            req: BaseReq 实例
+
+        Returns:
+            API 响应(已解析为 dict)
+        """
+        method = req.get_method()
+        path = req.get_url()
+        params = req.get_query_params()
+        data = req.get_body()
+
+        return self._request(method, path, params=params, json_data=data)
 
     def _request(
         self,

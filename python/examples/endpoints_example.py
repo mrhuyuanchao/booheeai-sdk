@@ -1,4 +1,9 @@
-"""API 端点常量
+"""API 端点常量(可选参考)
+
+自 v0.2.0 起,SDK 主推 `BaseReq` 接口模式:开发者通过继承 `BaseReq`
+在子类中直接声明 URL / method / params / body,由 `client.execute(req)`
+统一执行。本文件不再作为 SDK 的正式导出,仅作为历史 URL 清单保留,
+便于需要时复制路径到自己的 `BaseReq` 子类中。
 
 定义薄荷健康开放平台所有 API 端点路径常量,
 避免在业务代码中硬编码字符串,便于统一维护。
