@@ -52,3 +52,25 @@ def test_auth_mode_identity():
     """测试身份唯一性"""
     assert AuthMode.ACCESS_TOKEN is AuthMode.ACCESS_TOKEN
     assert AuthMode.API_KEY is AuthMode.API_KEY
+
+
+def test_rsa_sign_with_generated_key():
+    """测试 RSA-PSS 签名(使用生成的测试私钥)"""
+    from Crypto.PublicKey import RSA
+    import base64
+    from boohee_sdk.auth import rsa_sign
+
+    # 生成 2048 位测试私钥
+    key = RSA.generate(2048)
+    private_key_pem = key.export_key().decode()
+
+    message = "test_message"
+    signature = rsa_sign(message, private_key_pem)
+
+    # 验证签名是 Base64 编码的字符串
+    assert isinstance(signature, str)
+    # 验证可以 Base64 解码
+    decoded = base64.b64decode(signature)
+    assert len(decoded) > 0
+    # RSA 2048 签名长度应为 256 字节
+    assert len(decoded) == 256
