@@ -227,6 +227,8 @@ class BooheeClient:
     def _refresh_access_token(self):
         """
         调用 API 刷新 access_token
+
+        注意: 错误通过响应体的 code 字段判断,而非 HTTP 状态码
         """
         timestamp = int(time.time())
         signature_str = build_signature_string(self.app_id, self.app_key, timestamp)
@@ -246,10 +248,20 @@ class BooheeClient:
                 timeout=self.timeout
             )
 
-            if response.status_code >= 400:
-                raise AuthenticationError(f"Failed to get access_token: {response.text}")
+            # 解析响应体
+            try:
+                data = response.json()
+            except ValueError:
+                # 非 JSON 响应
+                raise AuthenticationError(f"Invalid response format: {response.text}")
 
-            data = response.json()
+            # 检查 code 字段
+            code = data.get('code', -1)
+            if code != 0:
+                message = data.get('message', 'Unknown error')
+                raise AuthenticationError(f"Failed to get access_token: code={code}, message={message}")
+
+            # 成功,提取 token
             self._access_token = data['access_token']
             self._token_expires_at = time.time() + data['expires_in']
 
@@ -258,6 +270,7 @@ class BooheeClient:
                 self.cache.set(self.app_id, self._access_token, data['expires_in'])
 
         except AuthenticationError:
+            # 重新抛出 AuthenticationError
             raise
         except Exception as e:
             raise AuthenticationError(f"Token refresh failed: {str(e)}")

@@ -226,6 +226,9 @@ def test_token_refresh():
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
+            'code': 0,
+            'message': '成功',
+            'now': 1722851989,
             'access_token': 'new_token',
             'expires_in': 86400
         }
@@ -266,6 +269,9 @@ def test_token_cache():
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
+            'code': 0,
+            'message': '成功',
+            'now': 1722851989,
             'access_token': 'cached_token',
             'expires_in': 86400
         }
@@ -305,7 +311,13 @@ def test_token_401_retry():
         # Mock token refresh to avoid RSA key parsing
         mock_post = Mock()
         mock_post.status_code = 200
-        mock_post.json.return_value = {'access_token': 'new_token', 'expires_in': 86400}
+        mock_post.json.return_value = {
+            'code': 0,
+            'message': '成功',
+            'now': 1722851989,
+            'access_token': 'new_token',
+            'expires_in': 86400
+        }
 
         with patch('requests.post', return_value=mock_post):
             with patch('boohee_sdk.client.rsa_sign', return_value='mock_signature'):
@@ -380,6 +392,9 @@ def test_token_refresh_buffer():
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
+            'code': 0,
+            'message': '成功',
+            'now': 1722851989,
             'access_token': 'new_token',
             'expires_in': 86400
         }
@@ -389,3 +404,58 @@ def test_token_refresh_buffer():
             token = client._get_access_token()
             assert token == 'new_token'
             assert mock_post.called
+
+
+def test_token_refresh_error():
+    """测试 Token 刷新失败(通过 code 判断)"""
+    from boohee_sdk.exceptions import AuthenticationError
+
+    client = BooheeClient(
+        app_id='test_app',
+        app_key='test_key',
+        private_key='test_private_key'
+    )
+
+    with patch('requests.post') as mock_post:
+        mock_response = Mock()
+        mock_response.status_code = 200  # HTTP 200
+        mock_response.json.return_value = {
+            'code': 401,
+            'message': 'invalid signature',
+            'now': 1722851989
+        }
+        mock_post.return_value = mock_response
+
+        with patch('boohee_sdk.client.rsa_sign', return_value='sig'):
+            with pytest.raises(AuthenticationError) as exc_info:
+                client._refresh_access_token()
+
+            assert 'code=401' in str(exc_info.value)
+            assert 'invalid signature' in str(exc_info.value)
+
+
+def test_token_refresh_success():
+    """测试 Token 刷新成功"""
+    client = BooheeClient(
+        app_id='test_app',
+        app_key='test_key',
+        private_key='test_private_key'
+    )
+
+    with patch('requests.post') as mock_post:
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            'code': 0,
+            'message': '成功',
+            'now': 1722851989,
+            'access_token': 'new_token',
+            'expires_in': 86400
+        }
+        mock_post.return_value = mock_response
+
+        with patch('boohee_sdk.client.rsa_sign', return_value='sig'):
+            client._refresh_access_token()
+
+            assert client._access_token == 'new_token'
+            assert client._token_expires_at > 0
