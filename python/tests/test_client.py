@@ -1,4 +1,5 @@
 import pytest
+import time
 from unittest.mock import Mock, patch
 from boohee_sdk import BooheeClient, AuthMode
 from boohee_sdk.exceptions import APIError, NetworkError
@@ -195,8 +196,9 @@ def test_client_access_token_header():
         app_key='key',
         private_key='pem'
     )
-    # 暂时设置一个占位 token
+    # 设置一个未过期的 token
     client._access_token = 'test_token'
+    client._token_expires_at = time.time() + 3600
 
     headers = client._get_headers()
     assert headers['AccessToken'] == 'test_token'
@@ -209,6 +211,108 @@ def test_client_invalid_method():
 
     with pytest.raises(ValueError, match="Unsupported HTTP method"):
         client._request('DELETE', '/test')
+
+
+def test_token_refresh():
+    """测试 Token 自动刷新"""
+    client = BooheeClient(
+        app_id='test_app',
+        app_key='test_key',
+        private_key='test_private_key'
+    )
+
+    with patch('requests.post') as mock_post:
+        # Mock AccessToken API
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            'access_token': 'new_token',
+            'expires_in': 86400
+        }
+        mock_post.return_value = mock_response
+
+        # Mock RSA 签名
+        with patch('boohee_sdk.client.rsa_sign') as mock_sign:
+            mock_sign.return_value = 'mock_signature'
+
+            token = client._get_access_token()
+
+            assert token == 'new_token'
+            assert mock_post.called
+
+
+def test_token_cache():
+    """测试 Token 缓存"""
+
+    class MockCache:
+        def __init__(self):
+            self.storage = {}
+        def get(self, app_id):
+            return self.storage.get(app_id)
+        def set(self, app_id, token, expires_in):
+            self.storage[app_id] = token
+        def delete(self, app_id):
+            self.storage.pop(app_id, None)
+
+    cache = MockCache()
+    client = BooheeClient(
+        app_id='test_app',
+        app_key='test_key',
+        private_key='test_private_key',
+        cache=cache
+    )
+
+    with patch('requests.post') as mock_post:
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            'access_token': 'cached_token',
+            'expires_in': 86400
+        }
+        mock_post.return_value = mock_response
+
+        with patch('boohee_sdk.client.rsa_sign') as mock_sign:
+            mock_sign.return_value = 'mock_signature'
+
+            # 第一次获取,应该调用 API
+            token1 = client._get_access_token()
+            assert token1 == 'cached_token'
+            assert cache.get('test_app') == 'cached_token'
+
+
+def test_token_401_retry():
+    """测试 401 自动重试"""
+    client = BooheeClient(
+        app_id='test_app',
+        app_key='test_key',
+        private_key='test_private_key'
+    )
+    client._access_token = 'expired_token'
+    client._token_expires_at = time.time() + 3600
+
+    with patch('requests.get') as mock_get:
+        # 第一次返回 401
+        mock_401 = Mock()
+        mock_401.status_code = 401
+
+        # 第二次返回 200
+        mock_200 = Mock()
+        mock_200.status_code = 200
+        mock_200.json.return_value = {'data': 'success'}
+
+        mock_get.side_effect = [mock_401, mock_200]
+
+        # Mock token refresh to avoid RSA key parsing
+        mock_post = Mock()
+        mock_post.status_code = 200
+        mock_post.json.return_value = {'access_token': 'new_token', 'expires_in': 86400}
+
+        with patch('requests.post', return_value=mock_post):
+            with patch('boohee_sdk.client.rsa_sign', return_value='mock_signature'):
+                result = client.get('/test', {})
+
+        assert result == {'data': 'success'}
+        assert mock_get.call_count == 2
 
 
 def test_client_server_error():

@@ -146,11 +146,24 @@ class BooheeClient:
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")
 
-            # 检查响应状态
+            # 检查响应状态:401 时自动刷新 token 并重试一次
             if response.status_code == 401 and self.auth_mode == AuthMode.ACCESS_TOKEN:
-                # Task 10: 在此处调用 _refresh_access_token() 并重试请求
-                # 当前 401 继续走下方 >= 400 分支,统一抛出 APIError
-                pass
+                self._force_refresh_access_token()
+                headers = self._get_headers()
+                if method == 'GET':
+                    response = requests.get(
+                        url,
+                        params=params,
+                        headers=headers,
+                        timeout=self.timeout
+                    )
+                else:
+                    response = requests.post(
+                        url,
+                        json=json_data,
+                        headers=headers,
+                        timeout=self.timeout
+                    )
 
             if response.status_code >= 400:
                 try:
@@ -178,11 +191,86 @@ class BooheeClient:
         }
 
         if self.auth_mode == AuthMode.ACCESS_TOKEN:
-            # _get_access_token 将在 Task 10 实现
-            # 暂时使用占位,后续补充
-            token = self._access_token or 'placeholder_token'
+            token = self._get_access_token()
             headers['AccessToken'] = token
         elif self.auth_mode == AuthMode.API_KEY:
             headers['X-Api-Key'] = self.api_key
 
         return headers
+
+    def _get_access_token(self) -> str:
+        """
+        获取 access_token(自动缓存和刷新)
+
+        Returns:
+            access_token 字符串
+        """
+        # 检查是否已缓存且未过期
+        if self._access_token and time.time() < self._token_expires_at - self.TOKEN_REFRESH_BUFFER:
+            return self._access_token
+
+        # 尝试从缓存获取
+        if self.cache:
+            cached_token = self.cache.get(self.app_id)
+            if cached_token:
+                self._access_token = cached_token
+                # 假设缓存的 token 还有 1 小时有效期
+                self._token_expires_at = time.time() + 3600
+                return self._access_token
+
+        # 刷新 token
+        with self._token_lock:
+            # 双重检查,防止并发刷新
+            if self._access_token and time.time() < self._token_expires_at - self.TOKEN_REFRESH_BUFFER:
+                return self._access_token
+
+            self._refresh_access_token()
+            return self._access_token
+
+    def _refresh_access_token(self):
+        """
+        调用 API 刷新 access_token
+        """
+        timestamp = int(time.time())
+        signature_str = build_signature_string(self.app_id, self.app_key, timestamp)
+        sign = rsa_sign(signature_str, self.private_key)
+
+        payload = {
+            'app_id': self.app_id,
+            'timestamp': timestamp,
+            'sign': sign
+        }
+
+        try:
+            response = requests.post(
+                f"{self.base_url}/open-apis/v1/access_token",
+                json=payload,
+                headers={'Content-Type': 'application/json'},
+                timeout=self.timeout
+            )
+
+            if response.status_code >= 400:
+                raise AuthenticationError(f"Failed to get access_token: {response.text}")
+
+            data = response.json()
+            self._access_token = data['access_token']
+            self._token_expires_at = time.time() + data['expires_in']
+
+            # 缓存 token
+            if self.cache:
+                self.cache.set(self.app_id, self._access_token, data['expires_in'])
+
+        except AuthenticationError:
+            raise
+        except Exception as e:
+            raise AuthenticationError(f"Token refresh failed: {str(e)}")
+
+    def _force_refresh_access_token(self):
+        """
+        强制刷新 token(忽略缓存)
+        """
+        self._access_token = None
+        self._token_expires_at = 0
+        if self.cache:
+            self.cache.delete(self.app_id)
+        self._refresh_access_token()
