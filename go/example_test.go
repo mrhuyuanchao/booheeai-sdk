@@ -25,18 +25,6 @@ func (r *FoodSearchReq) QueryParams() url.Values {
 }
 func (r *FoodSearchReq) Body() any { return nil }
 
-// WeightRecordReq 记录体重（POST 请求示例）
-type WeightRecordReq struct {
-	Weight float64
-}
-
-func (r *WeightRecordReq) Method() boohee.HttpMethod { return boohee.MethodPost }
-func (r *WeightRecordReq) URL() string               { return "/open-apis/v1/weight/record" }
-func (r *WeightRecordReq) QueryParams() url.Values   { return nil }
-func (r *WeightRecordReq) Body() any {
-	return map[string]any{"weight": r.Weight}
-}
-
 // ===== 使用示例 =====
 
 func Example_apiKeyMode() {
@@ -61,13 +49,6 @@ func Example_apiKeyMode() {
 	var data map[string]any
 	_ = resp.UnwrapData(&data)
 	fmt.Println("foods:", data)
-
-	// POST 请求
-	resp, err = client.Execute(&WeightRecordReq{Weight: 70.5})
-	if err != nil {
-		panic(err)
-	}
-	_ = resp
 }
 
 func Example_accessTokenMode() {
