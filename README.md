@@ -56,14 +56,30 @@ if resp.is_success():
 ### Go
 
 ```go
-import boohee "github.com/BOOHEEAI/sdk/go"
+import (
+    "fmt"
+    "net/url"
+
+    boohee "github.com/BOOHEEAI/sdk/go"
+)
 
 type FoodSearchReq struct{}
 
-func (r *FoodSearchReq) Method() boohee.HttpMethod { return boohee.MethodGet }
-func (r *FoodSearchReq) URL() string               { return "/open-apis/v1/food/search" }
-func (r *FoodSearchReq) QueryParams() url.Values    { return url.Values{"keyword": {"apple"}} }
-func (r *FoodSearchReq) Body() any                  { return nil }
+func (r *FoodSearchReq) Method() boohee.HttpMethod {
+    return boohee.MethodGet
+}
+
+func (r *FoodSearchReq) URL() string {
+    return "/open-apis/v1/food/search"
+}
+
+func (r *FoodSearchReq) QueryParams() url.Values {
+    return url.Values{"keyword": {"apple"}}
+}
+
+func (r *FoodSearchReq) Body() any {
+    return nil
+}
 
 client, _ := boohee.NewClient(boohee.ClientConfig{
     AuthMode: boohee.AuthModeAPIKey,

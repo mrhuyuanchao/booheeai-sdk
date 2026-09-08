@@ -49,7 +49,7 @@ type testGetReq struct {
 func (r *testGetReq) Method() HttpMethod      { return MethodGet }
 func (r *testGetReq) URL() string              { return "/open-apis/v1/food/search" }
 func (r *testGetReq) QueryParams() url.Values   { return url.Values{"keyword": {r.keyword}, "page": {string(rune('0' + r.page))}} }
-func (r *testGetReq) Body() interface{}         { return nil }
+func (r *testGetReq) Body() any                 { return nil }
 
 type testPostReq struct {
 	weight float64
@@ -58,7 +58,7 @@ type testPostReq struct {
 func (r *testPostReq) Method() HttpMethod     { return MethodPost }
 func (r *testPostReq) URL() string             { return "/open-apis/v1/weight/record" }
 func (r *testPostReq) QueryParams() url.Values  { return nil }
-func (r *testPostReq) Body() interface{}        { return map[string]interface{}{"weight": r.weight} }
+func (r *testPostReq) Body() any                { return map[string]any{"weight": r.weight} }
 
 // ===== NewClient 测试 =====
 
@@ -164,9 +164,9 @@ func TestExecute_Get(t *testing.T) {
 		if r.Header.Get("X-Api-Key") != "test_key" {
 			t.Errorf("expected X-Api-Key=test_key, got %s", r.Header.Get("X-Api-Key"))
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"code": 0, "message": "ok", "now": 1722851989,
-			"data": map[string]interface{}{"foods": []interface{}{}},
+		json.NewEncoder(w).Encode(map[string]any{
+			"code": 0,
+			"data": map[string]any{"foods": []any{}},
 		})
 	}))
 	defer server.Close()
@@ -187,14 +187,14 @@ func TestExecute_Post(t *testing.T) {
 		if r.Method != "POST" {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
-		var body map[string]interface{}
+		var body map[string]any
 		json.NewDecoder(r.Body).Decode(&body)
 		if body["weight"] != 70.5 {
 			t.Errorf("expected weight=70.5, got %v", body["weight"])
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"code": 0, "message": "ok", "now": 1722851989,
-			"data": map[string]interface{}{"success": true},
+		json.NewEncoder(w).Encode(map[string]any{
+			"code": 0,
+			"data": map[string]any{"success": true},
 		})
 	}))
 	defer server.Close()
@@ -215,7 +215,7 @@ func TestExecute_WithAccessToken(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bearer manual_token" {
 			t.Errorf("expected Authorization=Bearer manual_token, got %s", r.Header.Get("Authorization"))
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{"code": 0, "data": nil})
+		json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": nil})
 	}))
 	defer server.Close()
 
@@ -234,8 +234,8 @@ func TestFetchAccessToken_Success(t *testing.T) {
 		if r.URL.Path != accessTokenEndpoint {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"code": 0, "data": map[string]interface{}{"access_token": "new_token", "expires_in": 7200},
+		json.NewEncoder(w).Encode(map[string]any{
+			"code": 0, "data": map[string]any{"access_token": "new_token", "expires_in": 7200},
 		})
 	}))
 	defer server.Close()
@@ -268,7 +268,7 @@ func TestFetchAccessToken_APIKeyMode(t *testing.T) {
 
 func TestFetchAccessToken_ErrorResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"code": 401, "message": "invalid signature",
 		})
 	}))
@@ -291,8 +291,8 @@ func TestFetchAccessToken_ErrorResponse(t *testing.T) {
 
 func TestFetchAccessToken_DoesNotUpdateInternalState(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"code": 0, "data": map[string]interface{}{"access_token": "raw_token", "expires_in": 7200},
+		json.NewEncoder(w).Encode(map[string]any{
+			"code": 0, "data": map[string]any{"access_token": "raw_token", "expires_in": 7200},
 		})
 	}))
 	defer server.Close()
@@ -315,15 +315,15 @@ func TestTokenAutoRefresh(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == accessTokenEndpoint {
 			callCount++
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"code": 0, "data": map[string]interface{}{"access_token": "auto_token", "expires_in": 86400},
+			json.NewEncoder(w).Encode(map[string]any{
+				"code": 0, "data": map[string]any{"access_token": "auto_token", "expires_in": 86400},
 			})
 			return
 		}
 		if r.Header.Get("Authorization") != "Bearer auto_token" {
 			t.Errorf("expected Bearer auto_token, got %s", r.Header.Get("Authorization"))
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{"code": 0, "data": nil})
+		json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": nil})
 	}))
 	defer server.Close()
 
@@ -364,12 +364,12 @@ func (c *memCache) Delete(appID string)               { delete(c.store, appID) }
 func TestTokenCache_Integration(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == accessTokenEndpoint {
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"code": 0, "data": map[string]interface{}{"access_token": "cached_token", "expires_in": 86400},
+			json.NewEncoder(w).Encode(map[string]any{
+				"code": 0, "data": map[string]any{"access_token": "cached_token", "expires_in": 86400},
 			})
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{"code": 0, "data": nil})
+		json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": nil})
 	}))
 	defer server.Close()
 
@@ -423,11 +423,11 @@ func TestResponse_Error(t *testing.T) {
 }
 
 func TestResponse_UnwrapData(t *testing.T) {
-	data := map[string]interface{}{"name": "apple", "calories": 52}
+	data := map[string]any{"name": "apple", "calories": 52}
 	raw, _ := json.Marshal(data)
 	resp := &Response{Code: 0, Data: raw}
 
-	var result map[string]interface{}
+	var result map[string]any
 	if err := resp.UnwrapData(&result); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -438,7 +438,7 @@ func TestResponse_UnwrapData(t *testing.T) {
 
 func TestResponse_UnwrapData_NilData(t *testing.T) {
 	resp := &Response{Code: 0}
-	var result map[string]interface{}
+	var result map[string]any
 	if err := resp.UnwrapData(&result); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -498,12 +498,12 @@ func TestTokenRefresh_Concurrent(t *testing.T) {
 		if r.URL.Path == accessTokenEndpoint {
 			callCount++
 			time.Sleep(50 * time.Millisecond)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"code": 0, "data": map[string]interface{}{"access_token": "concurrent_token", "expires_in": 86400},
+			json.NewEncoder(w).Encode(map[string]any{
+				"code": 0, "data": map[string]any{"access_token": "concurrent_token", "expires_in": 86400},
 			})
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{"code": 0, "data": nil})
+		json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": nil})
 	}))
 	defer server.Close()
 

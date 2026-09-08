@@ -23,7 +23,7 @@ func (r *FoodSearchReq) QueryParams() url.Values {
 		"page":    {fmt.Sprintf("%d", r.Page)},
 	}
 }
-func (r *FoodSearchReq) Body() interface{} { return nil }
+func (r *FoodSearchReq) Body() any { return nil }
 
 // WeightRecordReq 记录体重（POST 请求示例）
 type WeightRecordReq struct {
@@ -33,8 +33,8 @@ type WeightRecordReq struct {
 func (r *WeightRecordReq) Method() boohee.HttpMethod { return boohee.MethodPost }
 func (r *WeightRecordReq) URL() string               { return "/open-apis/v1/weight/record" }
 func (r *WeightRecordReq) QueryParams() url.Values   { return nil }
-func (r *WeightRecordReq) Body() interface{} {
-	return map[string]interface{}{"weight": r.Weight}
+func (r *WeightRecordReq) Body() any {
+	return map[string]any{"weight": r.Weight}
 }
 
 // ===== 使用示例 =====
@@ -58,7 +58,7 @@ func Example_apiKeyMode() {
 	}
 
 	// 解析 data
-	var data map[string]interface{}
+	var data map[string]any
 	_ = resp.UnwrapData(&data)
 	fmt.Println("foods:", data)
 

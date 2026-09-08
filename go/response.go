@@ -26,7 +26,7 @@ func (r *Response) Err() error {
 }
 
 // UnwrapData 将 data 反序列化到目标对象
-func (r *Response) UnwrapData(v interface{}) error {
+func (r *Response) UnwrapData(v any) error {
 	if r.Data == nil {
 		return nil
 	}

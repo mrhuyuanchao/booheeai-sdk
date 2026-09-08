@@ -219,7 +219,7 @@ func (c *Client) FetchAccessToken() (*TokenInfo, error) {
 		return nil, &AuthenticationError{Message: fmt.Sprintf("failed to sign: %v", err)}
 	}
 
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"app_id":    c.appID,
 		"timestamp": timestamp,
 		"sign":      sign,
