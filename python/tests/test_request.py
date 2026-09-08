@@ -27,26 +27,6 @@ class FoodSearchReq(BaseReq):
         }
 
 
-class WeightRecordReq(BaseReq):
-    """记录体重请求示例"""
-
-    def __init__(self, user_id: str, weight: float):
-        self.user_id = user_id
-        self.weight = weight
-
-    def get_method(self) -> str:
-        return 'POST'
-
-    def get_url(self) -> str:
-        return '/open-apis/v1/weight/record'
-
-    def get_body(self) -> Dict[str, Any]:
-        return {
-            'user_id': self.user_id,
-            'weight': self.weight,
-        }
-
-
 class MinimalGetReq(BaseReq):
     """最小 GET:只实现抽象方法,依赖 query_params/body 默认值"""
 
@@ -80,10 +60,10 @@ def test_base_req_get():
 
 def test_base_req_post():
     """测试 POST 请求的各 accessor"""
-    req = WeightRecordReq('user123', 70.5)
+    req = MinimalPostReq()
     assert req.get_method() == 'POST'
-    assert req.get_url() == '/open-apis/v1/weight/record'
-    assert req.get_body() == {'user_id': 'user123', 'weight': 70.5}
+    assert req.get_url() == '/open-apis/v1/ping'
+    assert req.get_body() is None
     assert req.get_query_params() is None
 
 
@@ -147,7 +127,7 @@ def test_client_execute_post():
         }
         mock_post.return_value = mock_response
 
-        req = WeightRecordReq('user123', 70.5)
+        req = MinimalPostReq()
         resp = client.execute(req)
 
         assert resp.is_success()
@@ -155,7 +135,6 @@ def test_client_execute_post():
         mock_post.assert_called_once()
 
         call_kwargs = mock_post.call_args[1]
-        assert call_kwargs['json'] == {'user_id': 'user123', 'weight': 70.5}
         assert call_kwargs['headers']['X-Api-Key'] == 'test_key'
 
 

@@ -85,26 +85,6 @@ if resp.is_success():
     print(resp.data)
 ```
 
-### POST 请求示例
-
-```python
-class WeightRecordReq(BaseReq):
-    def __init__(self, weight: float):
-        self.weight = weight
-
-    def get_method(self) -> HttpMethod:
-        return HttpMethod.POST
-
-    def get_url(self) -> str:
-        return '/open-apis/v1/weight/record'
-
-    def get_body(self):
-        return {'weight': self.weight}
-
-resp = client.execute(WeightRecordReq(70.5))
-resp.raise_for_error()  # 失败抛出 APIError
-```
-
 ### `BaseReq` 接口
 
 ```python
