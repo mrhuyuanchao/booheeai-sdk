@@ -1,9 +1,10 @@
-# 薄荷健康开放平台 Node.js SDK
+# 薄荷科学.ai Node.js SDK
 
 ## 安装
 
 ```bash
-npm install @boohee/sdk
+# 从源码安装
+cd nodejs && npm install
 ```
 
 要求 Node.js >= 18.0.0
@@ -11,7 +12,7 @@ npm install @boohee/sdk
 ## 快速开始
 
 ```typescript
-import { BooheeClient, AuthMode, HttpMethod, Request } from '@boohee/sdk';
+import { BooheeClient, AuthMode, HttpMethod, Request } from './nodejs/src';
 
 // 定义请求
 class FoodSearchReq implements Request {

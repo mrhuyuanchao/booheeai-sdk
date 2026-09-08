@@ -1,4 +1,4 @@
-"""薄荷健康开放平台 Python SDK"""
+"""薄荷科学.ai Python SDK"""
 
 __version__ = '0.1.0'
 

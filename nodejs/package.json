@@ -1,7 +1,7 @@
 {
   "name": "@boohee/sdk",
   "version": "0.1.0",
-  "description": "薄荷健康开放平台 Node.js SDK",
+  "description": "薄荷科学.ai Node.js SDK",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

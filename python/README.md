@@ -1,9 +1,21 @@
-# 薄荷健康开放平台 Python SDK
+# 薄荷科学.ai Python SDK
 
 ## 安装
 
 ```bash
-pip install boohee-sdk
+# 从源码安装
+pip install -e .
+
+# 或安装依赖后直接引用
+pip install pycryptodome requests
+```
+
+然后在代码中引用：
+
+```python
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'path/to/sdk/python'))
+from boohee_sdk import BooheeClient
 ```
 
 ## 快速开始

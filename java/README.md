@@ -1,8 +1,16 @@
-# 薄荷健康开放平台 Java SDK
+# 薄荷科学.ai Java SDK
 
 ## 安装
 
-Maven:
+从源码构建：
+
+```bash
+cd java && mvn package
+```
+
+然后在你的项目中引用生成的 jar 包，或直接拷贝 `src/main/java/com/boohee/ai` 到你的项目中。
+
+Maven 依赖（发布后可用）：
 
 ```xml
 <dependency>

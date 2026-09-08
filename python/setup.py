@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
     name='boohee-sdk',
     version='0.1.0',
-    description='薄荷健康开放平台 Python SDK',
+    description='薄荷科学.ai Python SDK',
     author='Boohee',
     author_email='dev@boohee.com',
     packages=find_packages(),
