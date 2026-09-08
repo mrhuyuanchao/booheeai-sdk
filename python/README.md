@@ -15,7 +15,7 @@ SDK 采用 `BaseReq` 接口模式:开发者通过继承 `BaseReq` 描述一次 A
 
 ```python
 from typing import Dict, Any
-from boohee_sdk import BooheeClient, AuthMode, BaseReq
+from boohee_sdk import BooheeClient, AuthMode, BaseReq, HttpMethod
 
 # 1. 定义请求类
 class FoodSearchReq(BaseReq):
@@ -23,8 +23,8 @@ class FoodSearchReq(BaseReq):
         self.keyword = keyword
         self.page = page
 
-    def get_method(self) -> str:
-        return 'GET'
+    def get_method(self) -> HttpMethod:
+        return HttpMethod.GET
 
     def get_url(self) -> str:
         return '/open-apis/v1/food/search'
@@ -80,8 +80,8 @@ class WeightRecordReq(BaseReq):
     def __init__(self, weight: float):
         self.weight = weight
 
-    def get_method(self) -> str:
-        return 'POST'
+    def get_method(self) -> HttpMethod:
+        return HttpMethod.POST
 
     def get_url(self) -> str:
         return '/open-apis/v1/weight/record'
@@ -97,7 +97,7 @@ resp.raise_for_error()  # 失败抛出 APIError
 
 ```python
 class BaseReq(ABC):
-    def get_method(self) -> str:            # 必需:'GET' 或 'POST'
+    def get_method(self) -> HttpMethod:      # 必需:HttpMethod.GET 或 HttpMethod.POST
     def get_url(self) -> str:               # 必需:API 路径
     def get_query_params(self) -> Optional[Dict[str, Any]]:  # 可选,默认 None
     def get_body(self) -> Optional[Dict[str, Any]]:          # 可选,默认 None

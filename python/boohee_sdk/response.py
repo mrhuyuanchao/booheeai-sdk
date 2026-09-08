@@ -1,8 +1,5 @@
 """响应包装类"""
-from typing import Optional, Dict, Any, Generic, TypeVar
-
-
-T = TypeVar('T')
+from typing import Any, Dict, Optional
 
 
 class BaseResp:

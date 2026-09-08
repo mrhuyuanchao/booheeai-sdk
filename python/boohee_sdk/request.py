@@ -1,6 +1,13 @@
 """请求接口定义"""
 from abc import ABC, abstractmethod
+from enum import Enum
 from typing import Optional, Dict, Any
+
+
+class HttpMethod(str, Enum):
+    """HTTP 方法"""
+    GET = 'GET'
+    POST = 'POST'
 
 
 class BaseReq(ABC):
@@ -13,12 +20,12 @@ class BaseReq(ABC):
     """
 
     @abstractmethod
-    def get_method(self) -> str:
+    def get_method(self) -> HttpMethod:
         """
         获取 HTTP 方法
 
         Returns:
-            'GET' 或 'POST'
+            HttpMethod.GET 或 HttpMethod.POST
         """
         pass
 
@@ -51,4 +58,4 @@ class BaseReq(ABC):
         return None
 
 
-__all__ = ['BaseReq']
+__all__ = ['HttpMethod', 'BaseReq']

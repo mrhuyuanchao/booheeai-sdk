@@ -107,7 +107,7 @@ def test_client_execute_get():
     """测试 execute 走 GET:参数透传到 requests.get 的 params"""
     client = BooheeClient(api_key='test_key', auth_mode=AuthMode.API_KEY)
 
-    with patch('requests.get') as mock_get:
+    with patch('requests.Session.get') as mock_get:
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
@@ -136,7 +136,7 @@ def test_client_execute_post():
     """测试 execute 走 POST:参数透传到 requests.post 的 json"""
     client = BooheeClient(api_key='test_key', auth_mode=AuthMode.API_KEY)
 
-    with patch('requests.post') as mock_post:
+    with patch('requests.Session.post') as mock_post:
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
@@ -163,7 +163,7 @@ def test_client_execute_with_defaults():
     """测试 execute 在 query_params/body 为 None 时也能正常调用"""
     client = BooheeClient(api_key='test_key', auth_mode=AuthMode.API_KEY)
 
-    with patch('requests.get') as mock_get:
+    with patch('requests.Session.get') as mock_get:
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {

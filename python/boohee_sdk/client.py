@@ -7,7 +7,7 @@ import requests
 from .auth import AuthMode, rsa_sign, build_signature_string
 from .cache import TokenCache
 from .exceptions import AuthenticationError, APIError, NetworkError
-from .request import BaseReq
+from .request import BaseReq, HttpMethod
 from .response import BaseResp
 
 
@@ -49,6 +49,7 @@ class BooheeClient:
         self.base_url = base_url.rstrip('/')
         self.cache = cache
         self.timeout: Union[int, float] = timeout
+        self._session = requests.Session()
 
         # Access Token 模式
         if auth_mode == AuthMode.ACCESS_TOKEN:
@@ -82,33 +83,7 @@ class BooheeClient:
         else:
             raise ValueError(f"Invalid auth_mode: {auth_mode}")
 
-    def get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """
-        发送 GET 请求
-
-        Args:
-            path: API 路径
-            params: 查询参数
-
-        Returns:
-            API 响应(已解析为 dict)
-        """
-        return self._request('GET', path, params=params)
-
-    def post(self, path: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """
-        发送 POST 请求
-
-        Args:
-            path: API 路径
-            data: 请求体数据
-
-        Returns:
-            API 响应(已解析为 dict)
-        """
-        return self._request('POST', path, json_data=data)
-
-    def execute(self, req: BaseReq) -> BaseResp:
+    def execute(self, req: BaseReq, access_token: Optional[str] = None) -> BaseResp:
         """
         执行 BaseReq 请求
 
@@ -118,6 +93,8 @@ class BooheeClient:
 
         Args:
             req: BaseReq 实例
+            access_token: 可选,开发者自行获取的 token,传入后直接使用,
+                          不传则走内部自动缓存和刷新逻辑
 
         Returns:
             BaseResp 响应对象
@@ -127,15 +104,53 @@ class BooheeClient:
         params = req.get_query_params()
         data = req.get_body()
 
-        raw_response = self._request(method, path, params=params, json_data=data)
+        raw_response = self._request(method, path, params=params, json_data=data, access_token=access_token)
         return BaseResp(raw_response)
+
+    def execute_stream(self, req: BaseReq, access_token: Optional[str] = None):
+        """
+        执行 SSE 流式请求
+
+        返回一个生成器,逐块 yield SSE data 内容(字符串)。
+        遇到 `data: [DONE]` 或连接关闭时结束。
+
+        Args:
+            req: BaseReq 实例
+            access_token: 可选,开发者自行获取的 token
+
+        Yields:
+            每个 SSE event 的 data 字段内容(字符串)
+        """
+        method = req.get_method()
+        path = req.get_url()
+        params = req.get_query_params()
+        data = req.get_body()
+
+        url = f"{self.base_url}{path}"
+        headers = self._get_headers(access_token=access_token)
+        headers['Accept'] = 'text/event-stream'
+
+        try:
+            response = self._send_request_stream(method, url, params, data, headers)
+            response.encoding = 'utf-8'
+            for line in response.iter_lines(decode_unicode=True):
+                if not line or not line.startswith('data:'):
+                    continue
+                # 标准 SSE: 去掉 "data:" 前缀和一个可选的前导空格
+                payload = line[5:]
+                if payload.startswith(' '):
+                    payload = payload[1:]
+                yield payload
+        except requests.exceptions.RequestException as e:
+            raise NetworkError(f"Stream request failed: {str(e)}")
 
     def _request(
         self,
-        method: str,
+        method: HttpMethod,
         path: str,
         params: Optional[Dict[str, Any]] = None,
-        json_data: Optional[Dict[str, Any]] = None
+        json_data: Optional[Dict[str, Any]] = None,
+        access_token: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         发送 HTTP 请求
@@ -143,16 +158,10 @@ class BooheeClient:
         注意: 此方法不检查业务错误(code != 0),由 BaseResp.raise_for_error() 处理
         """
         url = f"{self.base_url}{path}"
-        headers = self._get_headers()
+        headers = self._get_headers(access_token=access_token)
 
         try:
             response = self._send_request(method, url, params, json_data, headers)
-
-            # 检查响应状态:401 时自动刷新 token 并重试一次(仅 ACCESS_TOKEN 模式)
-            if response.status_code == 401 and self.auth_mode == AuthMode.ACCESS_TOKEN:
-                self._force_refresh_access_token()
-                headers = self._get_headers()
-                response = self._send_request(method, url, params, json_data, headers)
 
             # 直接返回响应体,不检查 HTTP 状态码
             # 业务错误由 BaseResp.raise_for_error() 根据 code 字段判断
@@ -165,18 +174,44 @@ class BooheeClient:
         except requests.exceptions.RequestException as e:
             raise NetworkError(f"Request failed: {str(e)}")
 
-    def _send_request(self, method, url, params, json_data, headers):
+    def _send_request(
+        self,
+        method: HttpMethod,
+        url: str,
+        params: Optional[Dict[str, Any]],
+        json_data: Optional[Dict[str, Any]],
+        headers: Dict[str, str]
+    ) -> requests.Response:
         """发送 HTTP 请求的辅助方法"""
-        if method == 'GET':
-            return requests.get(url, params=params, headers=headers, timeout=self.timeout)
-        elif method == 'POST':
-            return requests.post(url, json=json_data, headers=headers, timeout=self.timeout)
+        if method == HttpMethod.GET:
+            return self._session.get(url, params=params, headers=headers, timeout=self.timeout)
+        elif method == HttpMethod.POST:
+            return self._session.post(url, json=json_data, headers=headers, timeout=self.timeout)
         else:
             raise ValueError(f"Unsupported HTTP method: {method}")
 
-    def _get_headers(self) -> Dict[str, str]:
+    def _send_request_stream(
+        self,
+        method: HttpMethod,
+        url: str,
+        params: Optional[Dict[str, Any]],
+        json_data: Optional[Dict[str, Any]],
+        headers: Dict[str, str]
+    ) -> requests.Response:
+        """发送流式 HTTP 请求"""
+        if method == HttpMethod.GET:
+            return self._session.get(url, params=params, headers=headers, timeout=self.timeout, stream=True)
+        elif method == HttpMethod.POST:
+            return self._session.post(url, json=json_data, headers=headers, timeout=self.timeout, stream=True)
+        else:
+            raise ValueError(f"Unsupported HTTP method: {method}")
+
+    def _get_headers(self, access_token: Optional[str] = None) -> Dict[str, str]:
         """
         获取请求头
+
+        Args:
+            access_token: 可选,开发者手动传入的 token,优先使用
 
         Returns:
             包含认证信息的请求头
@@ -187,12 +222,66 @@ class BooheeClient:
         }
 
         if self.auth_mode == AuthMode.ACCESS_TOKEN:
-            token = self._get_access_token()
-            headers['AccessToken'] = token
+            token = access_token or self._get_access_token()
+            headers['Authorization'] = f'Bearer {token}'
         elif self.auth_mode == AuthMode.API_KEY:
             headers['X-Api-Key'] = self.api_key
 
         return headers
+
+    def fetch_access_token(self) -> Dict[str, Any]:
+        """
+        从服务端获取 access_token,返回原始数据
+
+        底层接口,不做任何缓存。开发者可根据返回的 expires_in 自行实现缓存策略。
+        仅在 ACCESS_TOKEN 模式下可用。
+
+        Returns:
+            包含 access_token 和 expires_in 的字典
+
+        Raises:
+            AuthenticationError: 获取失败时抛出
+        """
+        if self.auth_mode != AuthMode.ACCESS_TOKEN:
+            raise AuthenticationError("fetch_access_token is only available in ACCESS_TOKEN mode")
+
+        timestamp = int(time.time())
+        signature_str = build_signature_string(self.app_id, self.app_key, timestamp)
+        sign = rsa_sign(signature_str, self.private_key)
+
+        payload = {
+            'app_id': self.app_id,
+            'timestamp': timestamp,
+            'sign': sign
+        }
+
+        try:
+            response = self._session.post(
+                f"{self.base_url}/open-apis/v1/access_token",
+                json=payload,
+                headers={'Content-Type': 'application/json'},
+                timeout=self.timeout
+            )
+
+            try:
+                data = response.json()
+            except ValueError:
+                raise AuthenticationError(f"Invalid response format: {response.text}")
+
+            code = data.get('code', -1)
+            if code != 0:
+                message = data.get('message', 'Unknown error')
+                raise AuthenticationError(f"Failed to get access_token: code={code}, message={message}")
+
+            return {
+                'access_token': data['data']['access_token'],
+                'expires_in': data['data']['expires_in']
+            }
+
+        except AuthenticationError:
+            raise
+        except Exception as e:
+            raise AuthenticationError(f"Token refresh failed: {str(e)}")
 
     def _get_access_token(self) -> str:
         """
@@ -226,61 +315,12 @@ class BooheeClient:
 
     def _refresh_access_token(self):
         """
-        调用 API 刷新 access_token
+        调用 API 刷新 access_token(内部使用)
 
-        注意: 错误通过响应体的 code 字段判断,而非 HTTP 状态码
+        实际调用 fetch_access_token 获取数据并更新内部缓存。
         """
-        timestamp = int(time.time())
-        signature_str = build_signature_string(self.app_id, self.app_key, timestamp)
-        sign = rsa_sign(signature_str, self.private_key)
-
-        payload = {
-            'app_id': self.app_id,
-            'timestamp': timestamp,
-            'sign': sign
-        }
-
-        try:
-            response = requests.post(
-                f"{self.base_url}/open-apis/v1/access_token",
-                json=payload,
-                headers={'Content-Type': 'application/json'},
-                timeout=self.timeout
-            )
-
-            # 解析响应体
-            try:
-                data = response.json()
-            except ValueError:
-                # 非 JSON 响应
-                raise AuthenticationError(f"Invalid response format: {response.text}")
-
-            # 检查 code 字段
-            code = data.get('code', -1)
-            if code != 0:
-                message = data.get('message', 'Unknown error')
-                raise AuthenticationError(f"Failed to get access_token: code={code}, message={message}")
-
-            # 成功,提取 token
-            self._access_token = data['access_token']
-            self._token_expires_at = time.time() + data['expires_in']
-
-            # 缓存 token
-            if self.cache:
-                self.cache.set(self.app_id, self._access_token, data['expires_in'])
-
-        except AuthenticationError:
-            # 重新抛出 AuthenticationError
-            raise
-        except Exception as e:
-            raise AuthenticationError(f"Token refresh failed: {str(e)}")
-
-    def _force_refresh_access_token(self):
-        """
-        强制刷新 token(忽略缓存)
-        """
-        self._access_token = None
-        self._token_expires_at = 0
+        data = self.fetch_access_token()
+        self._access_token = data['access_token']
+        self._token_expires_at = time.time() + data['expires_in']
         if self.cache:
-            self.cache.delete(self.app_id)
-        self._refresh_access_token()
+            self.cache.set(self.app_id, self._access_token, data['expires_in'])

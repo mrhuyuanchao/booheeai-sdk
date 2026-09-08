@@ -2,6 +2,7 @@ import pytest
 import time
 from unittest.mock import Mock, patch
 from boohee_sdk import BooheeClient, AuthMode
+from boohee_sdk.request import HttpMethod
 from boohee_sdk.exceptions import APIError, NetworkError
 
 
@@ -119,76 +120,6 @@ def test_client_empty_string_params():
         BooheeClient(app_id='', app_key='key', private_key='pem')
 
 
-def test_client_get_request():
-    """测试 GET 请求"""
-    client = BooheeClient(api_key='test_key', auth_mode=AuthMode.API_KEY)
-
-    with patch('requests.get') as mock_get:
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {'data': 'test'}
-        mock_get.return_value = mock_response
-
-        result = client.get('/open-apis/v1/food/search', {'keyword': 'apple'})
-
-        assert result == {'data': 'test'}
-        mock_get.assert_called_once()
-
-        # 验证 Header 包含 X-Api-Key
-        call_kwargs = mock_get.call_args[1]
-        assert 'X-Api-Key' in call_kwargs['headers']
-        assert call_kwargs['headers']['X-Api-Key'] == 'test_key'
-
-
-def test_client_post_request():
-    """测试 POST 请求"""
-    client = BooheeClient(api_key='test_key', auth_mode=AuthMode.API_KEY)
-
-    with patch('requests.post') as mock_post:
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {'success': True}
-        mock_post.return_value = mock_response
-
-        result = client.post('/open-apis/v1/weight/record', {'weight': 70.5})
-
-        assert result == {'success': True}
-        mock_post.assert_called_once()
-
-        call_kwargs = mock_post.call_args[1]
-        assert call_kwargs['json'] == {'weight': 70.5}
-        assert call_kwargs['headers']['X-Api-Key'] == 'test_key'
-
-
-def test_client_non_json_response():
-    """测试非 JSON 响应"""
-    client = BooheeClient(api_key='test_key', auth_mode=AuthMode.API_KEY)
-
-    with patch('requests.get') as mock_get:
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.json.side_effect = ValueError("Not JSON")
-        mock_response.text = "Internal Server Error"
-        mock_get.return_value = mock_response
-
-        # 应该返回包装的错误响应
-        raw = client.get('/test', {})
-        assert raw['code'] == -1
-        assert 'Internal Server Error' in raw['message']
-
-
-def test_client_network_error():
-    """测试网络错误处理"""
-    import requests as req
-    client = BooheeClient(api_key='test_key', auth_mode=AuthMode.API_KEY)
-
-    with patch('requests.get') as mock_get:
-        mock_get.side_effect = req.exceptions.ConnectionError("Connection refused")
-
-        with pytest.raises(NetworkError):
-            client.get('/open-apis/v1/food/search', {})
-
-
 def test_client_access_token_header():
     """测试 ACCESS_TOKEN 模式的 Header"""
     client = BooheeClient(
@@ -201,7 +132,7 @@ def test_client_access_token_header():
     client._token_expires_at = time.time() + 3600
 
     headers = client._get_headers()
-    assert headers['AccessToken'] == 'test_token'
+    assert headers['Authorization'] == 'Bearer test_token'
     assert 'X-Api-Key' not in headers
 
 
@@ -210,7 +141,7 @@ def test_client_invalid_method():
     client = BooheeClient(api_key='test_key', auth_mode=AuthMode.API_KEY)
 
     with pytest.raises(ValueError, match="Unsupported HTTP method"):
-        client._request('DELETE', '/test')
+        client._request('DELETE', '/test')  # type: ignore[arg-type]
 
 
 def test_token_refresh():
@@ -221,7 +152,7 @@ def test_token_refresh():
         private_key='test_private_key'
     )
 
-    with patch('requests.post') as mock_post:
+    with patch('requests.Session.post') as mock_post:
         # Mock AccessToken API
         mock_response = Mock()
         mock_response.status_code = 200
@@ -229,8 +160,10 @@ def test_token_refresh():
             'code': 0,
             'message': '成功',
             'now': 1722851989,
-            'access_token': 'new_token',
-            'expires_in': 86400
+            'data': {
+                'access_token': 'new_token',
+                'expires_in': 86400
+            }
         }
         mock_post.return_value = mock_response
 
@@ -265,15 +198,17 @@ def test_token_cache():
         cache=cache
     )
 
-    with patch('requests.post') as mock_post:
+    with patch('requests.Session.post') as mock_post:
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
             'code': 0,
             'message': '成功',
             'now': 1722851989,
-            'access_token': 'cached_token',
-            'expires_in': 86400
+            'data': {
+                'access_token': 'cached_token',
+                'expires_in': 86400
+            }
         }
         mock_post.return_value = mock_response
 
@@ -284,79 +219,6 @@ def test_token_cache():
             token1 = client._get_access_token()
             assert token1 == 'cached_token'
             assert cache.get('test_app') == 'cached_token'
-
-
-def test_token_401_retry():
-    """测试 401 自动重试"""
-    client = BooheeClient(
-        app_id='test_app',
-        app_key='test_key',
-        private_key='test_private_key'
-    )
-    client._access_token = 'expired_token'
-    client._token_expires_at = time.time() + 3600
-
-    with patch('requests.get') as mock_get:
-        # 第一次返回 401
-        mock_401 = Mock()
-        mock_401.status_code = 401
-
-        # 第二次返回 200
-        mock_200 = Mock()
-        mock_200.status_code = 200
-        mock_200.json.return_value = {'data': 'success'}
-
-        mock_get.side_effect = [mock_401, mock_200]
-
-        # Mock token refresh to avoid RSA key parsing
-        mock_post = Mock()
-        mock_post.status_code = 200
-        mock_post.json.return_value = {
-            'code': 0,
-            'message': '成功',
-            'now': 1722851989,
-            'access_token': 'new_token',
-            'expires_in': 86400
-        }
-
-        with patch('requests.post', return_value=mock_post):
-            with patch('boohee_sdk.client.rsa_sign', return_value='mock_signature'):
-                result = client.get('/test', {})
-
-        assert result == {'data': 'success'}
-        assert mock_get.call_count == 2
-
-
-def test_client_server_error_via_base_resp():
-    """测试服务端错误通过 BaseResp 处理"""
-    from boohee_sdk.response import BaseResp
-
-    client = BooheeClient(api_key='test_key', auth_mode=AuthMode.API_KEY)
-
-    with patch('requests.get') as mock_get:
-        mock_response = Mock()
-        mock_response.status_code = 200  # HTTP 200
-        mock_response.json.return_value = {
-            'code': 500,
-            'message': 'internal error',
-            'now': 1722851989,
-            'data': None
-        }
-        mock_get.return_value = mock_response
-
-        # _request 返回原始字典
-        raw = client.get('/test', {})
-
-        # 包装为 BaseResp
-        resp = BaseResp(raw)
-        assert resp.code == 500
-        assert resp.is_success() is False
-
-        # raise_for_error 应该抛出 APIError
-        with pytest.raises(APIError) as exc_info:
-            resp.raise_for_error()
-
-        assert exc_info.value.code == 500
 
 
 def test_token_memory_cache_hit():
@@ -371,7 +233,7 @@ def test_token_memory_cache_hit():
     client._token_expires_at = time.time() + 3600
 
     # 应该直接返回,不调用 API
-    with patch('requests.post') as mock_post:
+    with patch('requests.Session.post') as mock_post:
         token = client._get_access_token()
         assert token == 'cached_token'
         assert not mock_post.called
@@ -388,15 +250,17 @@ def test_token_refresh_buffer():
     client._access_token = 'expiring_token'
     client._token_expires_at = time.time() + 200  # 小于 300 秒 buffer
 
-    with patch('requests.post') as mock_post:
+    with patch('requests.Session.post') as mock_post:
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
             'code': 0,
             'message': '成功',
             'now': 1722851989,
-            'access_token': 'new_token',
-            'expires_in': 86400
+            'data': {
+                'access_token': 'new_token',
+                'expires_in': 86400
+            }
         }
         mock_post.return_value = mock_response
 
@@ -416,7 +280,7 @@ def test_token_refresh_error():
         private_key='test_private_key'
     )
 
-    with patch('requests.post') as mock_post:
+    with patch('requests.Session.post') as mock_post:
         mock_response = Mock()
         mock_response.status_code = 200  # HTTP 200
         mock_response.json.return_value = {
@@ -442,15 +306,17 @@ def test_token_refresh_success():
         private_key='test_private_key'
     )
 
-    with patch('requests.post') as mock_post:
+    with patch('requests.Session.post') as mock_post:
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
             'code': 0,
             'message': '成功',
             'now': 1722851989,
-            'access_token': 'new_token',
-            'expires_in': 86400
+            'data': {
+                'access_token': 'new_token',
+                'expires_in': 86400
+            }
         }
         mock_post.return_value = mock_response
 
@@ -459,3 +325,160 @@ def test_token_refresh_success():
 
             assert client._access_token == 'new_token'
             assert client._token_expires_at > 0
+
+
+def test_fetch_access_token_returns_raw_data():
+    """测试 fetch_access_token 返回原始数据"""
+    client = BooheeClient(
+        app_id='test_app',
+        app_key='test_key',
+        private_key='test_private_key'
+    )
+
+    with patch('requests.Session.post') as mock_post:
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            'code': 0,
+            'message': '成功',
+            'data': {
+                'access_token': 'raw_token',
+                'expires_in': 7200
+            }
+        }
+        mock_post.return_value = mock_response
+
+        with patch('boohee_sdk.client.rsa_sign', return_value='sig'):
+            result = client.fetch_access_token()
+
+            assert result == {'access_token': 'raw_token', 'expires_in': 7200}
+
+
+def test_fetch_access_token_does_not_update_internal_state():
+    """测试 fetch_access_token 不更新内部缓存状态"""
+    client = BooheeClient(
+        app_id='test_app',
+        app_key='test_key',
+        private_key='test_private_key'
+    )
+
+    with patch('requests.Session.post') as mock_post:
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            'code': 0,
+            'message': '成功',
+            'data': {
+                'access_token': 'raw_token',
+                'expires_in': 7200
+            }
+        }
+        mock_post.return_value = mock_response
+
+        with patch('boohee_sdk.client.rsa_sign', return_value='sig'):
+            client.fetch_access_token()
+
+            # 内部状态不应被更新
+            assert client._access_token is None
+            assert client._token_expires_at == 0
+
+
+def test_execute_with_access_token():
+    """测试 execute 传入 access_token 参数"""
+    from boohee_sdk.request import BaseReq
+
+    class TestReq(BaseReq):
+        def get_url(self): return '/test'
+        def get_method(self): return HttpMethod.GET
+
+    client = BooheeClient(
+        app_id='test_app',
+        app_key='test_key',
+        private_key='test_private_key'
+    )
+
+    with patch('requests.Session.get') as mock_get:
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {'code': 0, 'data': {}}
+        mock_get.return_value = mock_response
+
+        client.execute(TestReq(), access_token='manual_token')
+
+        # 验证请求头使用了手动传入的 token
+        call_kwargs = mock_get.call_args
+        assert call_kwargs[1]['headers']['Authorization'] == 'Bearer manual_token'
+
+
+def test_execute_without_access_token_uses_internal():
+    """测试 execute 不传 access_token 时走内部逻辑"""
+    from boohee_sdk.request import BaseReq
+
+    class TestReq(BaseReq):
+        def get_url(self): return '/test'
+        def get_method(self): return HttpMethod.GET
+
+    client = BooheeClient(
+        app_id='test_app',
+        app_key='test_key',
+        private_key='test_private_key'
+    )
+    client._access_token = 'internal_token'
+    client._token_expires_at = time.time() + 3600
+
+    with patch('requests.Session.get') as mock_get:
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {'code': 0, 'data': {}}
+        mock_get.return_value = mock_response
+
+        client.execute(TestReq())
+
+        call_kwargs = mock_get.call_args
+        assert call_kwargs[1]['headers']['Authorization'] == 'Bearer internal_token'
+
+
+def test_fetch_access_token_rejects_api_key_mode():
+    """测试 fetch_access_token 在 API Key 模式下抛出错误"""
+    from boohee_sdk.exceptions import AuthenticationError
+
+    client = BooheeClient(
+        api_key='test_key',
+        auth_mode=AuthMode.API_KEY
+    )
+
+    with pytest.raises(AuthenticationError, match="only available in ACCESS_TOKEN mode"):
+        client.fetch_access_token()
+
+
+def test_execute_stream():
+    """测试 execute_stream SSE 流式请求"""
+    from boohee_sdk.request import BaseReq
+
+    class StreamReq(BaseReq):
+        def get_url(self): return '/stream'
+        def get_method(self): return HttpMethod.GET
+
+    client = BooheeClient(
+        api_key='test_key',
+        auth_mode=AuthMode.API_KEY
+    )
+
+    with patch('requests.Session.get') as mock_get:
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.iter_lines.return_value = [
+            'id:1',
+            'data:{"content": "hello"}',
+            '',
+            'id:2',
+            'data:{"content": " world", "end": true}',
+            '',
+        ]
+        mock_get.return_value = mock_response
+
+        chunks = list(client.execute_stream(StreamReq()))
+
+        assert len(chunks) == 2
+        assert chunks[0] == '{"content": "hello"}'
+        assert chunks[1] == '{"content": " world", "end": true}'
