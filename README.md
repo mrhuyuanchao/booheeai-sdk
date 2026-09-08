@@ -15,33 +15,12 @@
 
 ## 安装
 
-### Python
+各语言的安装与使用方式，请参阅对应目录下的 README：
 
-```bash
-pip install boohee-sdk
-```
-
-### Go
-
-```bash
-go get github.com/BOOHEEAI/sdk/go
-```
-
-### Java
-
-```xml
-<dependency>
-    <groupId>com.boohee.ai</groupId>
-    <artifactId>boohee-sdk</artifactId>
-    <version>0.1.0</version>
-</dependency>
-```
-
-### Node.js
-
-```bash
-npm install @boohee/sdk
-```
+- [Python SDK](./python/README.md)
+- [Go SDK](./go/README.md)
+- [Java SDK](./java/README.md)
+- [Node.js SDK](./nodejs/README.md)
 
 ## 认证模式
 
